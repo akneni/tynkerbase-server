@@ -19,7 +19,7 @@ struct UserAuthData {
     email: String,
     pass_sha256: String,
     creation_time: f64,
-    tyb_key: String,
+    salt: String,
 }
 
 impl UserAuthData {
@@ -29,13 +29,13 @@ impl UserAuthData {
             .expect("Time went backwards");
         let t = t.as_secs() as f64 + t.subsec_nanos() as f64 * 1e-9;
         
-        let key = tynkerbase_universal::crypt_utils::gen_apikey();
+        let salt = tynkerbase_universal::crypt_utils::gen_salt();
 
         UserAuthData {
             email: email.to_string(),
             pass_sha256: pass_sha256.to_string(),
             creation_time: t,
-            tyb_key: key,
+            salt: salt,
         }
     }
 }
@@ -43,7 +43,7 @@ impl UserAuthData {
 #[get("/login?<email>&<pass_sha256>")]
 async fn login (email: &str, pass_sha256: &str, client: &State<Client>) -> status::Custom<String> {
     let collection: Collection<UserAuthData> = client.database(DB_NAME).collection(USER_AUTH_COL);
-    let res = collection.find_one(doc!{"email": email}, None)
+    let res = collection.find_one(doc!{"email": email})
         .await;
 
     match res {
@@ -52,7 +52,7 @@ async fn login (email: &str, pass_sha256: &str, client: &State<Client>) -> statu
                 return status::Custom(Status::Unauthorized, "Incorrect password".to_string())
             }
 
-            return status::Custom(Status::Ok, user_auth_data.tyb_key);
+            return status::Custom(Status::Ok, user_auth_data.salt);
         },
         Ok(None) => return status::Custom(Status::BadRequest, "User not found".to_string()),
         Err(_) => return status::Custom(Status::InternalServerError, "Database query failed".to_string()),
@@ -62,13 +62,13 @@ async fn login (email: &str, pass_sha256: &str, client: &State<Client>) -> statu
 #[get("/create-account?<email>&<pass_sha256>")]
 async fn create_account (email: &str, pass_sha256: &str, client: &State<Client>) -> status::Custom<&'static str> {
     let collection: Collection<UserAuthData> = client.database(DB_NAME).collection(USER_AUTH_COL);
-    let res = collection.find_one(doc!{"email": email}, None)
+    let res = collection.find_one(doc!{"email": email})
         .await;
 
     match res {
         Ok(None) => {
             let new_user = UserAuthData::new(email, pass_sha256);
-            let ins_res = collection.insert_one(new_user, None).await;
+            let ins_res = collection.insert_one(new_user).await;
             if let Err(_e) = ins_res {
                 return status::Custom(Status::InternalServerError, "unable to insert data into database");
             }
