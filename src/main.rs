@@ -55,7 +55,7 @@ async fn login (email: &str, pass_sha256: &str, client: &State<Client>) -> statu
             return status::Custom(Status::Ok, user_auth_data.salt);
         },
         Ok(None) => return status::Custom(Status::BadRequest, "User not found".to_string()),
-        Err(_) => return status::Custom(Status::InternalServerError, "Database query failed".to_string()),
+        Err(e) => return status::Custom(Status::InternalServerError, format!("Database query failed: {}", e)),
     };
 }
 
