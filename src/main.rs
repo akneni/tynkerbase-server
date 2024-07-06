@@ -1,45 +1,20 @@
+mod schemas;
+
 use mongodb::{
     bson::{doc, Binary, Bson},
     options::ClientOptions,
     Client, Collection,
 };
 use rocket::{get, http::Status, post, response::status, routes, State};
-use serde::{Deserialize, Serialize};
 use shuttle_runtime::{SecretStore, Secrets};
-use std::time::{SystemTime, UNIX_EPOCH};
-use tynkerbase_universal;
+use schemas::{UserAuthData, NgAddr};
+use futures::StreamExt;
+use bincode;
 
 const DB_NAME: &str = "tyb-server-db";
 const USER_AUTH_COL: &str = "user-auth";
+const NG_ADDR_COL: &str = "ng-addr";
 
-#[derive(Debug, Serialize, Deserialize)]
-struct UserAuthData {
-    email: String,
-    pass_sha256: String,
-    creation_time: f64,
-    salt: String,
-    ngrok_aes: Option<Vec<u8>>,
-}
-
-impl UserAuthData {
-    fn new(email: &str, pass_sha256: &str) -> Self {
-        let start = SystemTime::now();
-        let t = start
-            .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards");
-        let t = t.as_secs() as f64 + t.subsec_nanos() as f64 * 1e-9;
-
-        let salt = tynkerbase_universal::crypt_utils::gen_salt();
-
-        UserAuthData {
-            email: email.to_string(),
-            pass_sha256: pass_sha256.to_string(),
-            creation_time: t,
-            salt: salt,
-            ngrok_aes: None,
-        }
-    }
-}
 
 async fn authenitcate_req(
     email: &str,
@@ -160,6 +135,107 @@ async fn get_ng_auth(
     }
 }
 
+#[get("/add-addr?<email>&<pass_sha256>&<node_id>&<addr>")]
+async fn add_address(
+    email: &str,
+    pass_sha256: &str,
+    node_id: &str,
+    addr: &str,
+    client: &State<Client>
+) -> status::Custom<&'static str> {
+    match authenitcate_req(email, pass_sha256, client).await {
+        Ok(_) => {},
+        Err(e) => return e,
+    }
+
+    let collection: Collection<NgAddr> = client.database(DB_NAME).collection(NG_ADDR_COL);
+
+    // Check if node already exists. 
+    let res = collection.find_one(doc!{"node_id": node_id}).await;
+
+    if let Ok(None) = res {
+        let new_doc = NgAddr {
+            node_id: node_id.to_string(),
+            email: email.to_string(),
+            addr: addr.to_string(),
+        };
+        let res = collection.insert_one(new_doc).await;
+        if let Err(_) = res {
+            return status::Custom(Status::InternalServerError, "failed to insert data to database"); 
+        }
+    }
+    else if let Ok(Some(_)) = res {
+        let res = collection.update_one(
+            doc!{"node_id": node_id}, 
+            doc!{"$set": {"addr": addr}}
+        ).await;
+        if let Err(_) = res {
+            return status::Custom(Status::InternalServerError, "failed to update data in database"); 
+        }
+    }
+    else if let Err(_) = res {
+        return status::Custom(Status::InternalServerError, "failed to access databse");
+    }
+    status::Custom(Status::Ok, "success")
+}
+
+#[get("/remove-addr?<email>&<pass_sha256>&<node_id>")]
+async fn remove_address(
+    email: &str,
+    pass_sha256: &str,
+    node_id: &str,
+    client: &State<Client>
+) -> status::Custom<&'static str> {    
+    match authenitcate_req(email, pass_sha256, client).await {
+        Ok(_) => {},
+        Err(e) => return e,
+    }
+
+    let collection: Collection<NgAddr> = client.database(DB_NAME).collection(NG_ADDR_COL);
+
+    let res = collection.delete_one(doc!{"node_id": node_id}).await;
+    if let Err(_) = res {
+        return status::Custom(Status::InternalServerError, "failed to delete from db");
+    }
+    status::Custom(Status::Ok, "success")
+}
+
+#[get("/get-all-addrs?<email>&<pass_sha256>")]
+async fn get_all_adresses(
+    email: &str,
+    pass_sha256: &str,
+    client: &State<Client>
+) -> status::Custom<Vec<u8>> {
+    match authenitcate_req(email, pass_sha256, client).await {
+        Ok(_) => {},
+        Err(e) => return status::Custom(e.0, e.1.as_bytes().to_vec()),
+    }
+
+    let collection: Collection<NgAddr> = client.database(DB_NAME).collection(NG_ADDR_COL);
+
+    let cursor = collection.find(doc!{"email": email}).await;
+    let mut cursor = match cursor {
+        Ok(c) => c,
+        Err(_) => return status::Custom(
+            Status::InternalServerError, 
+            "Failed to read from db".as_bytes().to_vec()
+        )
+    };
+
+    let mut addresses: Vec<NgAddr> = vec![];
+
+    while let Some(Ok(doc)) = cursor.next().await {
+        addresses.push(doc);
+    }
+    
+    let bin = match bincode::serialize(&addresses) {
+        Ok(b) => b,
+        _ => return status::Custom(Status::Ok, "error serializing result".as_bytes().to_vec())
+    };
+
+    status::Custom(Status::Ok, bin)
+}
+
 #[get("/")]
 fn index() -> &'static str {
     "root"
@@ -179,7 +255,13 @@ async fn main(#[Secrets] secret_store: SecretStore) -> shuttle_rocket::ShuttleRo
     let rocket = rocket::build()
         .mount("/", routes![index])
         .mount("/auth", routes![login, create_account])
-        .mount("/ngrok", routes![save_ng_auth, get_ng_auth])
+        .mount("/ngrok", routes![
+            save_ng_auth, 
+            get_ng_auth, 
+            add_address, 
+            remove_address,
+            get_all_adresses,
+        ])
         .manage(client);
 
     Ok(rocket.into())
