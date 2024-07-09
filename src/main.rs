@@ -16,7 +16,7 @@ const USER_AUTH_COL: &str = "user-auth";
 const NG_ADDR_COL: &str = "ng-addr";
 
 
-async fn authenitcate_req(
+async fn authenticate_req(
     email: &str,
     pass_sha256: &str,
     client: &State<Client>,
@@ -45,7 +45,7 @@ async fn authenitcate_req(
     };
 
     if res.pass_sha256 != pass_sha256 {
-        return Err(status::Custom(Status::Forbidden, "inocrrect password"));
+        return Err(status::Custom(Status::Forbidden, "incorrect password"));
     }
 
     Ok(res)
@@ -53,7 +53,7 @@ async fn authenitcate_req(
 
 #[get("/login?<email>&<pass_sha256>")]
 async fn login(email: &str, pass_sha256: &str, client: &State<Client>) -> status::Custom<String> {
-    let res = match authenitcate_req(email, pass_sha256, client).await {
+    let res = match authenticate_req(email, pass_sha256, client).await {
         Ok(r) => r,
         Err(e) => return status::Custom(e.0, e.1.to_string()),
     };
@@ -94,7 +94,7 @@ async fn save_ng_auth(
     data: Vec<u8>,
     client: &State<Client>,
 ) -> status::Custom<&'static str> {
-    let _ = match authenitcate_req(email, pass_sha256, client).await {
+    let _ = match authenticate_req(email, pass_sha256, client).await {
         Ok(r) => r,
         Err(e) => return e,
     };
@@ -121,7 +121,7 @@ async fn get_ng_auth(
     pass_sha256: &str,
     client: &State<Client>,
 ) -> status::Custom<Vec<u8>> {
-    let res = match authenitcate_req(email, pass_sha256, client).await {
+    let res = match authenticate_req(email, pass_sha256, client).await {
         Ok(r) => r,
         Err(e) => return status::Custom(e.0, e.1.as_bytes().to_vec()),
     };
@@ -143,7 +143,7 @@ async fn add_address(
     addr: &str,
     client: &State<Client>
 ) -> status::Custom<&'static str> {
-    match authenitcate_req(email, pass_sha256, client).await {
+    match authenticate_req(email, pass_sha256, client).await {
         Ok(_) => {},
         Err(e) => return e,
     }
@@ -174,7 +174,7 @@ async fn add_address(
         }
     }
     else if let Err(_) = res {
-        return status::Custom(Status::InternalServerError, "failed to access databse");
+        return status::Custom(Status::InternalServerError, "failed to access database");
     }
     status::Custom(Status::Ok, "success")
 }
@@ -186,7 +186,7 @@ async fn remove_address(
     node_id: &str,
     client: &State<Client>
 ) -> status::Custom<&'static str> {    
-    match authenitcate_req(email, pass_sha256, client).await {
+    match authenticate_req(email, pass_sha256, client).await {
         Ok(_) => {},
         Err(e) => return e,
     }
@@ -201,12 +201,12 @@ async fn remove_address(
 }
 
 #[get("/get-all-addrs?<email>&<pass_sha256>")]
-async fn get_all_adresses(
+async fn get_all_addresses(
     email: &str,
     pass_sha256: &str,
     client: &State<Client>
 ) -> status::Custom<Vec<u8>> {
-    match authenitcate_req(email, pass_sha256, client).await {
+    match authenticate_req(email, pass_sha256, client).await {
         Ok(_) => {},
         Err(e) => return status::Custom(e.0, e.1.as_bytes().to_vec()),
     }
@@ -260,7 +260,7 @@ async fn main(#[Secrets] secret_store: SecretStore) -> shuttle_rocket::ShuttleRo
             get_ng_auth, 
             add_address, 
             remove_address,
-            get_all_adresses,
+            get_all_addresses,
         ])
         .manage(client);
 

@@ -1,3 +1,4 @@
+pub use tynkerbase_universal::netwk_utils::PubAddr as NgAddr;
 use serde::{Serialize, Deserialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -29,11 +30,4 @@ impl UserAuthData {
             ngrok_aes: None,
         }
     }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct NgAddr {
-    pub node_id: String,
-    pub email: String,
-    pub addr: String,
 }
