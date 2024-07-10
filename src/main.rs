@@ -7,13 +7,13 @@ use mongodb::{
 };
 use rocket::{get, http::Status, post, response::status, routes, State};
 use shuttle_runtime::{SecretStore, Secrets};
-use schemas::{UserAuthData, NgAddr};
+use schemas::{UserAuthData, Node};
 use futures::StreamExt;
 use bincode;
 
 const DB_NAME: &str = "tyb-server-db";
 const USER_AUTH_COL: &str = "user-auth";
-const NG_ADDR_COL: &str = "ng-addr";
+const NODES_COL: &str = "ng-addr";
 
 
 async fn authenticate_req(
@@ -135,11 +135,12 @@ async fn get_ng_auth(
     }
 }
 
-#[get("/add-addr?<email>&<pass_sha256>&<node_id>&<addr>")]
+#[get("/add-addr?<email>&<pass_sha256>&<node_id>&<node_name>&<addr>")]
 async fn add_address(
     email: &str,
     pass_sha256: &str,
     node_id: &str,
+    node_name: &str,
     addr: &str,
     client: &State<Client>
 ) -> status::Custom<&'static str> {
@@ -148,14 +149,15 @@ async fn add_address(
         Err(e) => return e,
     }
 
-    let collection: Collection<NgAddr> = client.database(DB_NAME).collection(NG_ADDR_COL);
+    let collection: Collection<Node> = client.database(DB_NAME).collection(NODES_COL);
 
     // Check if node already exists. 
     let res = collection.find_one(doc!{"node_id": node_id}).await;
 
     if let Ok(None) = res {
-        let new_doc = NgAddr {
+        let new_doc = Node {
             node_id: node_id.to_string(),
+            name: node_name.to_string(),
             email: email.to_string(),
             addr: addr.to_string(),
         };
@@ -191,13 +193,61 @@ async fn remove_address(
         Err(e) => return e,
     }
 
-    let collection: Collection<NgAddr> = client.database(DB_NAME).collection(NG_ADDR_COL);
+    let collection: Collection<Node> = client.database(DB_NAME).collection(NODES_COL);
 
     let res = collection.delete_one(doc!{"node_id": node_id}).await;
     if let Err(_) = res {
         return status::Custom(Status::InternalServerError, "failed to delete from db");
     }
     status::Custom(Status::Ok, "success")
+}
+
+#[get("/check-node-exists/id?<email>&<pass_sha256>&<node_id>")]
+async fn check_node_exists_id (
+    email: &str,
+    pass_sha256: &str,
+    node_id: &str,
+    client: &State<Client>
+) -> status::Custom<&'static str> {
+    match authenticate_req(email, pass_sha256, client).await {
+        Ok(_) => {},
+        Err(e) => return e,
+    }
+
+    let collection: Collection<Node> = client.database(DB_NAME).collection(NODES_COL);
+
+    let res = collection.find_one(doc!{"email": email, "node_id": node_id})
+        .await
+        .unwrap();
+
+    if res.is_none() {
+        return status::Custom(Status::Ok, "false");
+    }
+    status::Custom(Status::Ok, "true")
+}
+
+#[get("/check-node-exists/id?<email>&<pass_sha256>&<name>")]
+async fn check_node_exists_name (
+    email: &str,
+    pass_sha256: &str,
+    name: &str,
+    client: &State<Client>
+) -> status::Custom<&'static str> {
+    match authenticate_req(email, pass_sha256, client).await {
+        Ok(_) => {},
+        Err(e) => return e,
+    }
+
+    let collection: Collection<Node> = client.database(DB_NAME).collection(NODES_COL);
+
+    let res = collection.find_one(doc!{"email": email, "name": name})
+        .await
+        .unwrap();
+
+    if res.is_none() {
+        return status::Custom(Status::Ok, "false");
+    }
+    status::Custom(Status::Ok, "true")
 }
 
 #[get("/get-all-addrs?<email>&<pass_sha256>")]
@@ -211,7 +261,7 @@ async fn get_all_addresses(
         Err(e) => return status::Custom(e.0, e.1.as_bytes().to_vec()),
     }
 
-    let collection: Collection<NgAddr> = client.database(DB_NAME).collection(NG_ADDR_COL);
+    let collection: Collection<Node> = client.database(DB_NAME).collection(NODES_COL);
 
     let cursor = collection.find(doc!{"email": email}).await;
     let mut cursor = match cursor {
@@ -222,7 +272,7 @@ async fn get_all_addresses(
         )
     };
 
-    let mut addresses: Vec<NgAddr> = vec![];
+    let mut addresses: Vec<Node> = vec![];
 
     while let Some(Ok(doc)) = cursor.next().await {
         addresses.push(doc);
@@ -261,6 +311,8 @@ async fn main(#[Secrets] secret_store: SecretStore) -> shuttle_rocket::ShuttleRo
             add_address, 
             remove_address,
             get_all_addresses,
+            check_node_exists_name,
+            check_node_exists_id,
         ])
         .manage(client);
 

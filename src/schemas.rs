@@ -1,4 +1,4 @@
-pub use tynkerbase_universal::netwk_utils::PubAddr as NgAddr;
+pub use tynkerbase_universal::netwk_utils::Node;
 use serde::{Serialize, Deserialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
