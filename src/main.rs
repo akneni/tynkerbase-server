@@ -1,20 +1,19 @@
 mod schemas;
 
+use bincode;
+use futures::StreamExt;
 use mongodb::{
     bson::{doc, Binary, Bson},
     options::ClientOptions,
     Client, Collection,
 };
 use rocket::{get, http::Status, post, response::status, routes, State};
+use schemas::{Node, UserAuthData};
 use shuttle_runtime::{SecretStore, Secrets};
-use schemas::{UserAuthData, Node};
-use futures::StreamExt;
-use bincode;
 
 const DB_NAME: &str = "tyb-server-db";
 const USER_AUTH_COL: &str = "user-auth";
 const NODES_COL: &str = "ng-addr";
-
 
 async fn authenticate_req(
     email: &str,
@@ -142,17 +141,17 @@ async fn add_address(
     node_id: &str,
     node_name: &str,
     addr: &str,
-    client: &State<Client>
+    client: &State<Client>,
 ) -> status::Custom<&'static str> {
     match authenticate_req(email, pass_sha256, client).await {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(e) => return e,
     }
 
     let collection: Collection<Node> = client.database(DB_NAME).collection(NODES_COL);
 
-    // Check if node already exists. 
-    let res = collection.find_one(doc!{"node_id": node_id}).await;
+    // Check if node already exists.
+    let res = collection.find_one(doc! {"node_id": node_id}).await;
 
     if let Ok(None) = res {
         let new_doc = Node {
@@ -163,19 +162,22 @@ async fn add_address(
         };
         let res = collection.insert_one(new_doc).await;
         if let Err(_) = res {
-            return status::Custom(Status::InternalServerError, "failed to insert data to database"); 
+            return status::Custom(
+                Status::InternalServerError,
+                "failed to insert data to database",
+            );
         }
-    }
-    else if let Ok(Some(_)) = res {
-        let res = collection.update_one(
-            doc!{"node_id": node_id}, 
-            doc!{"$set": {"addr": addr}}
-        ).await;
+    } else if let Ok(Some(_)) = res {
+        let res = collection
+            .update_one(doc! {"node_id": node_id}, doc! {"$set": {"addr": addr}})
+            .await;
         if let Err(_) = res {
-            return status::Custom(Status::InternalServerError, "failed to update data in database"); 
+            return status::Custom(
+                Status::InternalServerError,
+                "failed to update data in database",
+            );
         }
-    }
-    else if let Err(_) = res {
+    } else if let Err(_) = res {
         return status::Custom(Status::InternalServerError, "failed to access database");
     }
     status::Custom(Status::Ok, "success")
@@ -186,16 +188,16 @@ async fn remove_address(
     email: &str,
     pass_sha256: &str,
     node_id: &str,
-    client: &State<Client>
-) -> status::Custom<&'static str> {    
+    client: &State<Client>,
+) -> status::Custom<&'static str> {
     match authenticate_req(email, pass_sha256, client).await {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(e) => return e,
     }
 
     let collection: Collection<Node> = client.database(DB_NAME).collection(NODES_COL);
 
-    let res = collection.delete_one(doc!{"node_id": node_id}).await;
+    let res = collection.delete_one(doc! {"node_id": node_id}).await;
     if let Err(_) = res {
         return status::Custom(Status::InternalServerError, "failed to delete from db");
     }
@@ -203,20 +205,21 @@ async fn remove_address(
 }
 
 #[get("/check-node-exists/id?<email>&<pass_sha256>&<node_id>")]
-async fn check_node_exists_id (
+async fn check_node_exists_id(
     email: &str,
     pass_sha256: &str,
     node_id: &str,
-    client: &State<Client>
+    client: &State<Client>,
 ) -> status::Custom<&'static str> {
     match authenticate_req(email, pass_sha256, client).await {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(e) => return e,
     }
 
     let collection: Collection<Node> = client.database(DB_NAME).collection(NODES_COL);
 
-    let res = collection.find_one(doc!{"email": email, "node_id": node_id})
+    let res = collection
+        .find_one(doc! {"email": email, "node_id": node_id})
         .await
         .unwrap();
 
@@ -226,21 +229,22 @@ async fn check_node_exists_id (
     status::Custom(Status::Ok, "true")
 }
 
-#[get("/check-node-exists/id?<email>&<pass_sha256>&<name>")]
-async fn check_node_exists_name (
+#[get("/check-node-exists/name?<email>&<pass_sha256>&<name>")]
+async fn check_node_exists_name(
     email: &str,
     pass_sha256: &str,
     name: &str,
-    client: &State<Client>
+    client: &State<Client>,
 ) -> status::Custom<&'static str> {
     match authenticate_req(email, pass_sha256, client).await {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(e) => return e,
     }
 
     let collection: Collection<Node> = client.database(DB_NAME).collection(NODES_COL);
 
-    let res = collection.find_one(doc!{"email": email, "name": name})
+    let res = collection
+        .find_one(doc! {"email": email, "name": name})
         .await
         .unwrap();
 
@@ -254,22 +258,24 @@ async fn check_node_exists_name (
 async fn get_all_addresses(
     email: &str,
     pass_sha256: &str,
-    client: &State<Client>
+    client: &State<Client>,
 ) -> status::Custom<Vec<u8>> {
     match authenticate_req(email, pass_sha256, client).await {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(e) => return status::Custom(e.0, e.1.as_bytes().to_vec()),
     }
 
     let collection: Collection<Node> = client.database(DB_NAME).collection(NODES_COL);
 
-    let cursor = collection.find(doc!{"email": email}).await;
+    let cursor = collection.find(doc! {"email": email}).await;
     let mut cursor = match cursor {
         Ok(c) => c,
-        Err(_) => return status::Custom(
-            Status::InternalServerError, 
-            "Failed to read from db".as_bytes().to_vec()
-        )
+        Err(_) => {
+            return status::Custom(
+                Status::InternalServerError,
+                "Failed to read from db".as_bytes().to_vec(),
+            )
+        }
     };
 
     let mut addresses: Vec<Node> = vec![];
@@ -277,10 +283,10 @@ async fn get_all_addresses(
     while let Some(Ok(doc)) = cursor.next().await {
         addresses.push(doc);
     }
-    
+
     let bin = match bincode::serialize(&addresses) {
         Ok(b) => b,
-        _ => return status::Custom(Status::Ok, "error serializing result".as_bytes().to_vec())
+        _ => return status::Custom(Status::Ok, "error serializing result".as_bytes().to_vec()),
     };
 
     status::Custom(Status::Ok, bin)
@@ -305,15 +311,18 @@ async fn main(#[Secrets] secret_store: SecretStore) -> shuttle_rocket::ShuttleRo
     let rocket = rocket::build()
         .mount("/", routes![index])
         .mount("/auth", routes![login, create_account])
-        .mount("/ngrok", routes![
-            save_ng_auth, 
-            get_ng_auth, 
-            add_address, 
-            remove_address,
-            get_all_addresses,
-            check_node_exists_name,
-            check_node_exists_id,
-        ])
+        .mount(
+            "/ngrok",
+            routes![
+                save_ng_auth,
+                get_ng_auth,
+                add_address,
+                remove_address,
+                get_all_addresses,
+                check_node_exists_name,
+                check_node_exists_id,
+            ],
+        )
         .manage(client);
 
     Ok(rocket.into())
