@@ -1,5 +1,6 @@
 mod schemas;
 
+use tynkerbase_universal::netwk_utils::Node;
 use bincode;
 use futures::StreamExt;
 use mongodb::{
@@ -134,13 +135,11 @@ async fn get_ng_auth(
     }
 }
 
-#[get("/add-addr?<email>&<pass_sha256>&<node_id>&<node_name>&<addr>")]
+#[post("/add-addr?<email>&<pass_sha256>", data = "<data>")]
 async fn add_address(
     email: &str,
     pass_sha256: &str,
-    node_id: &str,
-    node_name: &str,
-    addr: &str,
+    data: Vec<u8>,
     client: &State<Client>,
 ) -> status::Custom<&'static str> {
     match authenticate_req(email, pass_sha256, client).await {
@@ -150,17 +149,16 @@ async fn add_address(
 
     let collection: Collection<Node> = client.database(DB_NAME).collection(NODES_COL);
 
+    let node: Node = match bincode::deserialize(&data) {
+        Ok(n) => n,
+        _ => return status::Custom(Status::BadRequest, "data is in the incorrect format"),
+    };
+
     // Check if node already exists.
-    let res = collection.find_one(doc! {"node_id": node_id}).await;
+    let res = collection.find_one(doc! {"node_id": &node.node_id}).await;
 
     if let Ok(None) = res {
-        let new_doc = Node {
-            node_id: node_id.to_string(),
-            name: node_name.to_string(),
-            email: email.to_string(),
-            addr: addr.to_string(),
-        };
-        let res = collection.insert_one(new_doc).await;
+        let res = collection.insert_one(node).await;
         if let Err(_) = res {
             return status::Custom(
                 Status::InternalServerError,
@@ -169,7 +167,7 @@ async fn add_address(
         }
     } else if let Ok(Some(_)) = res {
         let res = collection
-            .update_one(doc! {"node_id": node_id}, doc! {"$set": {"addr": addr}})
+            .update_one(doc! {"node_id": &node.node_id}, doc! {"$set": {"addr": &node.addr}})
             .await;
         if let Err(_) = res {
             return status::Custom(
