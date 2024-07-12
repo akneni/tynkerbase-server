@@ -1,4 +1,5 @@
 pub use tynkerbase_universal::netwk_utils::Node;
+use mongodb::bson::Bson;
 use serde::{Serialize, Deserialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -9,7 +10,7 @@ pub struct UserAuthData {
     pub pass_sha256: String,
     pub creation_time: f64,
     pub salt: String,
-    pub ngrok_aes: Option<Vec<u8>>,
+    pub ngrok_aes: Option<Bson>,
 }
 
 impl UserAuthData {

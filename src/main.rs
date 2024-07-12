@@ -28,7 +28,7 @@ async fn authenticate_req(
         Err(e) => {
             return Err(status::Custom(
                 Status::InternalServerError,
-                format!("Failed to access database -> {}", e),
+                format!("Failed to access database during authentication -> {}", e),
             ))
         }
     };
@@ -104,8 +104,9 @@ async fn save_ng_auth(
         subtype: mongodb::bson::spec::BinarySubtype::Generic,
         bytes: data,
     });
+
     let status = collection
-        .update_one(doc! {"email": email}, doc! {"$set": {"ngrok_aes": update}})
+        .update_one(doc! {"email": email}, doc! {"$set": {"ngrok_aes": Some(update)}})
         .await;
     if let Err(e) = status {
         return status::Custom(Status::BadRequest, format!("Error updating database -> {}", e));
@@ -126,7 +127,7 @@ async fn get_ng_auth(
     };
 
     match res.ngrok_aes {
-        Some(r) => status::Custom(Status::Ok, r),
+        Some(r) => {status::Custom(Status::Ok, mongodb::bson::to_vec(&r).unwrap())},
         None => status::Custom(
             Status::NotFound,
             "ngrok key doesn't exist".to_string().into_bytes(),
