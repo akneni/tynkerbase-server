@@ -1,12 +1,16 @@
 mod schemas;
 
 use bincode;
-use futures::StreamExt;
 use mongodb::{
     bson::{doc, Binary, Bson},
     options::ClientOptions,
     Client, Collection,
 };
+
+// This is not actually unused, we need it for `cursor.next().await`;
+#[allow(unused)]
+use futures::StreamExt;
+
 use rocket::{get, http::Status, post, response::status, routes, State};
 use schemas::{Node, UserAuthData};
 use shuttle_runtime::{SecretStore, Secrets};
@@ -127,7 +131,12 @@ async fn get_ng_auth(
     };
 
     match res.ngrok_aes {
-        Some(r) => {status::Custom(Status::Ok, mongodb::bson::to_vec(&r).unwrap())},
+        Some(r) => {
+            if let Bson::Binary(bin) = r {
+                return status::Custom(Status::Ok, bin.bytes);
+            }
+            status::Custom(Status::InternalServerError, "Data for ngrok token not in bytes".as_bytes().to_vec())
+        },
         None => status::Custom(
             Status::NotFound,
             "ngrok key doesn't exist".to_string().into_bytes(),
