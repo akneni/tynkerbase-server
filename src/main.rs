@@ -140,17 +140,17 @@ async fn add_address(
     pass_sha256: &str,
     data: Vec<u8>,
     client: &State<Client>,
-) -> status::Custom<&'static str> {
+) -> status::Custom<String> {
     match authenticate_req(email, pass_sha256, client).await {
         Ok(_) => {}
-        Err(e) => return e,
+        Err(e) => return status::Custom(e.0, e.1.to_string()),
     }
 
     let collection: Collection<Node> = client.database(DB_NAME).collection(NODES_COL);
 
     let node: Node = match bincode::deserialize(&data) {
         Ok(n) => n,
-        _ => return status::Custom(Status::BadRequest, "data is in the incorrect format"),
+        Err(e) => return status::Custom(Status::BadRequest, format!("data is in the incorrect format -> {}", e)),
     };
 
     // Check if node already exists.
@@ -158,26 +158,26 @@ async fn add_address(
 
     if let Ok(None) = res {
         let res = collection.insert_one(node).await;
-        if let Err(_) = res {
+        if let Err(e) = res {
             return status::Custom(
                 Status::InternalServerError,
-                "failed to insert data to database",
+                format!("failed to insert data to database -> {}", e),
             );
         }
     } else if let Ok(Some(_)) = res {
         let res = collection
             .update_one(doc! {"node_id": &node.node_id}, doc! {"$set": {"addr": &node.addr}})
             .await;
-        if let Err(_) = res {
+        if let Err(e) = res {
             return status::Custom(
                 Status::InternalServerError,
-                "failed to update data in database",
+                format!("failed to update data in database -> {}", e),
             );
         }
-    } else if let Err(_) = res {
-        return status::Custom(Status::InternalServerError, "failed to access database");
+    } else if let Err(e) = res {
+        return status::Custom(Status::InternalServerError, format!("failed to access database -> {}", e));
     }
-    status::Custom(Status::Ok, "success")
+    status::Custom(Status::Ok, "success".to_string())
 }
 
 #[get("/remove-addr?<email>&<pass_sha256>&<node_id>")]
