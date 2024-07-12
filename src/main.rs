@@ -19,16 +19,16 @@ async fn authenticate_req(
     email: &str,
     pass_sha256: &str,
     client: &State<Client>,
-) -> Result<UserAuthData, status::Custom<&'static str>> {
+) -> Result<UserAuthData, status::Custom<String>> {
     let collection: Collection<UserAuthData> = client.database(DB_NAME).collection(USER_AUTH_COL);
     let res = collection.find_one(doc! {"email": email}).await;
 
     let res = match res {
         Ok(r) => r,
-        Err(_) => {
+        Err(e) => {
             return Err(status::Custom(
                 Status::InternalServerError,
-                "Failed to access database",
+                format!("Failed to access database -> {}", e),
             ))
         }
     };
@@ -38,13 +38,13 @@ async fn authenticate_req(
         None => {
             return Err(status::Custom(
                 Status::BadRequest,
-                "No account with specified email exists",
+                "No account with specified email exists".to_string(),
             ))
         }
     };
 
     if res.pass_sha256 != pass_sha256 {
-        return Err(status::Custom(Status::Forbidden, "incorrect password"));
+        return Err(status::Custom(Status::Forbidden, "incorrect password".to_string()));
     }
 
     Ok(res)
@@ -92,7 +92,7 @@ async fn save_ng_auth(
     pass_sha256: &str,
     data: Vec<u8>,
     client: &State<Client>,
-) -> status::Custom<&'static str> {
+) -> status::Custom<String> {
     let _ = match authenticate_req(email, pass_sha256, client).await {
         Ok(r) => r,
         Err(e) => return e,
@@ -107,11 +107,11 @@ async fn save_ng_auth(
     let status = collection
         .update_one(doc! {"email": email}, doc! {"$set": {"ngrok_aes": update}})
         .await;
-    if let Err(_) = status {
-        return status::Custom(Status::BadRequest, "Error updating database");
+    if let Err(e) = status {
+        return status::Custom(Status::BadRequest, format!("Error updating database -> {}", e));
     }
 
-    status::Custom(Status::Ok, "success")
+    status::Custom(Status::Ok, "success".to_string())
 }
 
 #[get("/get-ng-auth?<email>&<pass_sha256>")]
@@ -186,7 +186,7 @@ async fn remove_address(
     pass_sha256: &str,
     node_id: &str,
     client: &State<Client>,
-) -> status::Custom<&'static str> {
+) -> status::Custom<String> {
     match authenticate_req(email, pass_sha256, client).await {
         Ok(_) => {}
         Err(e) => return e,
@@ -195,10 +195,10 @@ async fn remove_address(
     let collection: Collection<Node> = client.database(DB_NAME).collection(NODES_COL);
 
     let res = collection.delete_one(doc! {"node_id": node_id}).await;
-    if let Err(_) = res {
-        return status::Custom(Status::InternalServerError, "failed to delete from db");
+    if let Err(e) = res {
+        return status::Custom(Status::InternalServerError, format!("failed to delete from db -> {}", e));
     }
-    status::Custom(Status::Ok, "success")
+    status::Custom(Status::Ok, "success".to_string())
 }
 
 #[get("/check-node-exists/id?<email>&<pass_sha256>&<node_id>")]
@@ -207,7 +207,7 @@ async fn check_node_exists_id(
     pass_sha256: &str,
     node_id: &str,
     client: &State<Client>,
-) -> status::Custom<&'static str> {
+) -> status::Custom<String> {
     match authenticate_req(email, pass_sha256, client).await {
         Ok(_) => {}
         Err(e) => return e,
@@ -221,9 +221,9 @@ async fn check_node_exists_id(
         .unwrap();
 
     if res.is_none() {
-        return status::Custom(Status::Ok, "false");
+        return status::Custom(Status::Ok, "false".to_string());
     }
-    status::Custom(Status::Ok, "true")
+    status::Custom(Status::Ok, "true".to_string())
 }
 
 #[get("/check-node-exists/name?<email>&<pass_sha256>&<name>")]
@@ -232,7 +232,7 @@ async fn check_node_exists_name(
     pass_sha256: &str,
     name: &str,
     client: &State<Client>,
-) -> status::Custom<&'static str> {
+) -> status::Custom<String> {
     match authenticate_req(email, pass_sha256, client).await {
         Ok(_) => {}
         Err(e) => return e,
@@ -246,9 +246,9 @@ async fn check_node_exists_name(
         .unwrap();
 
     if res.is_none() {
-        return status::Custom(Status::Ok, "false");
+        return status::Custom(Status::Ok, "false".to_string());
     }
-    status::Custom(Status::Ok, "true")
+    status::Custom(Status::Ok, "true".to_string())
 }
 
 #[get("/get-all-addrs?<email>&<pass_sha256>")]
@@ -267,10 +267,10 @@ async fn get_all_addresses(
     let cursor = collection.find(doc! {"email": email}).await;
     let mut cursor = match cursor {
         Ok(c) => c,
-        Err(_) => {
+        Err(e) => {
             return status::Custom(
                 Status::InternalServerError,
-                "Failed to read from db".as_bytes().to_vec(),
+                format!("Failed to read from db -> {}", e).as_bytes().to_vec(),
             )
         }
     };
@@ -283,7 +283,7 @@ async fn get_all_addresses(
 
     let bin = match bincode::serialize(&addresses) {
         Ok(b) => b,
-        _ => return status::Custom(Status::Ok, "error serializing result".as_bytes().to_vec()),
+        Err(e) => return status::Custom(Status::InternalServerError, format!("error serializing result -> {}", e).as_bytes().to_vec()),
     };
 
     status::Custom(Status::Ok, bin)
