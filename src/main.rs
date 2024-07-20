@@ -38,7 +38,7 @@ impl<'a> FromRequest<'a> for RateLimit {
         };
 
         let uri = req.uri().to_string();
-        let secs_limit = if uri.contains("create-account") {(60*5) as f64} else {1.};
+        let secs_limit = if uri.contains("create-account") {/*(60*5) as f64*/ 0.5} else {1.};
         
         let ip_hist = rate_limit::ip_hist();
         let  lock = ip_hist.lock().unwrap();
