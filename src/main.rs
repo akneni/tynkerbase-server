@@ -109,7 +109,12 @@ async fn authenticate_req(
 }
 
 #[get("/login?<email>&<pass_sha256>")]
-async fn login(email: &str, pass_sha256: &str, client: &State<Client>) -> status::Custom<String> {
+async fn login(
+    email: &str, 
+    pass_sha256: &str, 
+    client: &State<Client>, 
+    #[allow(unused)] rate_limit: RateLimit
+) -> status::Custom<String> {
     let res = match authenticate_req(email, pass_sha256, client).await {
         Ok(r) => r,
         Err(e) => return status::Custom(e.0, e.1.to_string()),
@@ -158,6 +163,7 @@ async fn save_ng_auth(
     pass_sha256: &str,
     data: Vec<u8>,
     client: &State<Client>,
+    #[allow(unused)] rate_limit: RateLimit,
 ) -> status::Custom<String> {
     let _ = match authenticate_req(email, pass_sha256, client).await {
         Ok(r) => r,
@@ -186,6 +192,7 @@ async fn get_ng_auth(
     email: &str,
     pass_sha256: &str,
     client: &State<Client>,
+    #[allow(unused)] rate_limit: RateLimit,
 ) -> status::Custom<Vec<u8>> {
     let res = match authenticate_req(email, pass_sha256, client).await {
         Ok(r) => r,
@@ -212,6 +219,7 @@ async fn add_address(
     pass_sha256: &str,
     data: Vec<u8>,
     client: &State<Client>,
+    #[allow(unused)] rate_limit: RateLimit,
 ) -> status::Custom<String> {
     match authenticate_req(email, pass_sha256, client).await {
         Ok(_) => {}
@@ -258,6 +266,7 @@ async fn remove_address(
     pass_sha256: &str,
     node_id: &str,
     client: &State<Client>,
+    #[allow(unused)] rate_limit: RateLimit,
 ) -> status::Custom<String> {
     match authenticate_req(email, pass_sha256, client).await {
         Ok(_) => {}
@@ -279,6 +288,7 @@ async fn check_node_exists_id(
     pass_sha256: &str,
     node_id: &str,
     client: &State<Client>,
+    #[allow(unused)] rate_limit: RateLimit,
 ) -> status::Custom<String> {
     match authenticate_req(email, pass_sha256, client).await {
         Ok(_) => {}
@@ -304,6 +314,7 @@ async fn check_node_exists_name(
     pass_sha256: &str,
     name: &str,
     client: &State<Client>,
+    #[allow(unused)] rate_limit: RateLimit,
 ) -> status::Custom<String> {
     match authenticate_req(email, pass_sha256, client).await {
         Ok(_) => {}
@@ -328,6 +339,7 @@ async fn get_all_addresses(
     email: &str,
     pass_sha256: &str,
     client: &State<Client>,
+    #[allow(unused)] rate_limit: RateLimit,
 ) -> status::Custom<Vec<u8>> {
     match authenticate_req(email, pass_sha256, client).await {
         Ok(_) => {}
