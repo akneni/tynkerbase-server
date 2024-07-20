@@ -136,11 +136,12 @@ async fn create_account(
 
     match res {
         Ok(None) => {
-            match verification::verify_email(email, &bd_apikey).await {
-                Ok(_r @ false) => return Custom(Status::Forbidden, "Email not verified"),
-                Err(_) => return Custom(Status::InternalServerError, "Failed to send verification email"),
-                _ => {},
-            }
+            // TODO: Get email verification set up
+            // match verification::verify_email(email, &bd_apikey).await {
+            //     Ok(_r @ false) => return Custom(Status::Forbidden, "Email not verified"),
+            //     Err(_) => return Custom(Status::InternalServerError, "Failed to send verification email"),
+            //     _ => {},
+            // }
 
             let new_user = UserAuthData::new(email, pass_sha256);
             let ins_res = collection.insert_one(new_user).await;
