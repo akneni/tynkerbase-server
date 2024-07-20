@@ -1,4 +1,6 @@
 mod schemas;
+mod rate_limit;
+mod verification;
 
 use bincode;
 use mongodb::{
@@ -11,13 +13,65 @@ use mongodb::{
 #[allow(unused)]
 use futures::StreamExt;
 
-use rocket::{get, http::Status, post, response::status, routes, State};
+use rocket::{
+    get, http::Status, outcome::Outcome, post, request::{self, FromRequest, Request}, response::status::{self, Custom}, routes, State
+};
 use schemas::{Node, UserAuthData};
 use shuttle_runtime::{SecretStore, Secrets};
 
 const DB_NAME: &str = "tyb-server-db";
 const USER_AUTH_COL: &str = "user-auth";
 const NODES_COL: &str = "ng-addr";
+
+
+struct RateLimit;
+
+#[rocket::async_trait]
+impl<'a> FromRequest<'a> for RateLimit {
+    type Error = &'static str;
+
+    /// Limits the number of requests per ip address to 1 per second (or 1 oer 5 min for the `/auth/create-account` endpoint).
+    async fn from_request(req: &'a Request<'_>) -> request::Outcome<Self, Self::Error> {
+        let ip = match req.real_ip() {
+            Some(ip) => ip,
+            _ => return Outcome::Error((Status::Forbidden, "Something smells fishy...")),
+        };
+
+        let uri = req.uri().to_string();
+        let secs_limit = if uri.contains("create-account") {(60*5) as f64} else {1.};
+        
+        let ip_hist = rate_limit::ip_hist();
+        let  lock = ip_hist.lock().unwrap();
+        let _ = match lock.get_mut(&ip) {
+            Some(mut inst) => {
+                if uri.contains("create-account") {
+                    if inst.reg.elapsed().as_secs_f64() < secs_limit {
+                        inst.update_create_account();
+                        return Outcome::Error((Status::Forbidden, "To many requests, try again later"));
+                    }
+                    inst.update_create_account();
+                }
+                else {
+                    if inst.reg.elapsed().as_secs_f64() < secs_limit {
+                        inst.update_reg();
+                        return Outcome::Error((Status::Forbidden, "To many requests, try again later"));
+                    }
+                    inst.update_reg();
+                }
+                return Outcome::Success(RateLimit);
+            },
+            None => {
+                if uri.contains("create-account") {
+                    lock.insert(ip, rate_limit::EndpointAccess::now_create_account());
+                }
+                else {
+                    lock.insert(ip, rate_limit::EndpointAccess::now_reg());
+                }
+                return Outcome::Success(RateLimit);
+            }
+        };
+    }
+}
 
 async fn authenticate_req(
     email: &str,
@@ -69,12 +123,19 @@ async fn create_account(
     email: &str,
     pass_sha256: &str,
     client: &State<Client>,
+    bd_apikey: &State<String>,
 ) -> status::Custom<&'static str> {
     let collection: Collection<UserAuthData> = client.database(DB_NAME).collection(USER_AUTH_COL);
     let res = collection.find_one(doc! {"email": email}).await;
 
     match res {
         Ok(None) => {
+            match verification::verify_email(email, &bd_apikey).await {
+                Ok(_r @ false) => return Custom(Status::Forbidden, "Email not verified"),
+                Err(_) => return Custom(Status::InternalServerError, "Failed to send verification email"),
+                _ => {},
+            }
+
             let new_user = UserAuthData::new(email, pass_sha256);
             let ins_res = collection.insert_one(new_user).await;
             if let Err(_e) = ins_res {
@@ -309,11 +370,16 @@ async fn main(#[Secrets] secret_store: SecretStore) -> shuttle_rocket::ShuttleRo
     let mongo_auth_uri = secret_store
         .get("MONGO_AUTH_URI")
         .expect("Secret `MONGO_AUTH_URI` does not exist.");
+
     let client = ClientOptions::parse(&mongo_auth_uri)
         .await
         .expect("Unable to connect to mongo database");
 
     let client = Client::with_options(client).expect("Failed to build client");
+
+    let bigdata_api =  secret_store
+        .get("BIGDATA_API_KEY")
+        .expect("Secret `BIGDATA_API_KEY` does not exist.");
 
     let rocket = rocket::build()
         .mount("/", routes![index])
@@ -330,7 +396,8 @@ async fn main(#[Secrets] secret_store: SecretStore) -> shuttle_rocket::ShuttleRo
                 check_node_exists_id,
             ],
         )
-        .manage(client);
+        .manage(client)
+        .manage(bigdata_api);
 
     Ok(rocket.into())
 }
