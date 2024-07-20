@@ -6,7 +6,7 @@ use std::{collections::HashMap, time::Duration};
 
 pub async fn verify_email(email: &str, api_key: &str) -> Result<bool> {
     let client = reqwest::ClientBuilder::new()
-        .timeout(Duration::from_secs(60*5))
+        .timeout(Duration::from_secs(5))
         .build()
         .map_err(|e| anyhow!("Error building http client -> {}", e))?;
 
@@ -26,7 +26,7 @@ pub async fn verify_email(email: &str, api_key: &str) -> Result<bool> {
     };
 
     let c1: bool = res.get("isValid").unwrap_or(&"false".to_string()).parse().unwrap_or(false);
-    let c2: bool = res.get("isKnownSpammerDomain").unwrap_or(&"false".to_string()).parse().unwrap_or(false);
+    let c2: bool = res.get("isKnownSpammerDomain").unwrap_or(&"true".to_string()).parse().unwrap_or(true);
 
-    Ok(c1 && c2)
+    Ok(c1 && !c2)
 }
