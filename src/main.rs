@@ -124,6 +124,7 @@ async fn create_account(
     pass_sha256: &str,
     client: &State<Client>,
     bd_apikey: &State<String>,
+    #[allow(unused)] rate_limit: RateLimit,
 ) -> status::Custom<&'static str> {
     let collection: Collection<UserAuthData> = client.database(DB_NAME).collection(USER_AUTH_COL);
     let res = collection.find_one(doc! {"email": email}).await;
@@ -361,7 +362,7 @@ async fn get_all_addresses(
 }
 
 #[get("/")]
-fn index() -> &'static str {
+fn index(#[allow(unused)] rate_limit: RateLimit) -> &'static str {
     "root"
 }
 
