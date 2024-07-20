@@ -32,7 +32,7 @@ impl<'a> FromRequest<'a> for RateLimit {
 
     /// Limits the number of requests per ip address to 1 per second (or 1 oer 5 min for the `/auth/create-account` endpoint).
     async fn from_request(req: &'a Request<'_>) -> request::Outcome<Self, Self::Error> {
-        let ip = match req.real_ip() {
+        let ip = match req.client_ip() {
             Some(ip) => ip,
             _ => return Outcome::Error((Status::Forbidden, "Something smells fishy...")),
         };
