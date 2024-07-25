@@ -158,6 +158,34 @@ async fn create_account(
     }
 }
 
+#[get("/delete-account?<email>&<pass_sha256>")]
+async fn delete_account(
+    email: &str,
+    pass_sha256: &str,
+    client: &State<Client>,
+    #[allow(unused)] rate_limit: RateLimit,
+) -> status::Custom<String> {
+    let _ = match authenticate_req(email, pass_sha256, client).await {
+        Ok(r) => r,
+        Err(e) => return e,
+    };
+
+    let auth_collection: Collection<UserAuthData> = client.database(DB_NAME).collection(USER_AUTH_COL);
+    let nodes_collection: Collection<UserAuthData> = client.database(DB_NAME).collection(NODES_COL);
+
+    let res = nodes_collection.delete_many(doc!{"email": email}).await;
+    if let Err(_e) = res {
+        return status::Custom(Status::InternalServerError, format!("Failed to delete account."));
+    }
+
+    let res = auth_collection.delete_one(doc!{"email": email}).await;
+    if let Err(_e) = res {
+        return status::Custom(Status::InternalServerError, format!("Failed to delete account."));
+    }
+
+    status::Custom(Status::Ok, "success".to_string())
+}
+
 #[post("/save-ng-auth?<email>&<pass_sha256>", data = "<data>")]
 async fn save_ng_auth(
     email: &str,
@@ -397,7 +425,7 @@ async fn main(#[Secrets] secret_store: SecretStore) -> shuttle_rocket::ShuttleRo
 
     let rocket = rocket::build()
         .mount("/", routes![index])
-        .mount("/auth", routes![login, create_account])
+        .mount("/auth", routes![login, create_account, delete_account])
         .mount(
             "/ngrok",
             routes![
