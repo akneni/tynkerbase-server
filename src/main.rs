@@ -46,15 +46,13 @@ impl<'a> FromRequest<'a> for RateLimit {
             Some(mut inst) => {
                 if uri.contains("create-account") {
                     if inst.reg.elapsed().as_secs_f64() < secs_limit {
-                        inst.update_create_account();
-                        return Outcome::Error((Status::Forbidden, "To many requests, try again later"));
+                        return Outcome::Error((Status::TooManyRequests, "To many requests, try again later"));
                     }
                     inst.update_create_account();
                 }
                 else {
                     if inst.reg.elapsed().as_secs_f64() < secs_limit {
-                        inst.update_reg();
-                        return Outcome::Error((Status::Forbidden, "To many requests, try again later"));
+                        return Outcome::Error((Status::TooManyRequests, "To many requests, try again later"));
                     }
                     inst.update_reg();
                 }
