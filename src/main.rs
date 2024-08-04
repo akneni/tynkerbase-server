@@ -2,6 +2,8 @@ mod schemas;
 mod rate_limit;
 mod verification;
 
+use std::fs;
+
 use bincode;
 use mongodb::{
     bson::{doc, Binary, Bson},
@@ -400,6 +402,25 @@ async fn get_all_addresses(
     status::Custom(Status::Ok, bin)
 }
 
+#[get("/?<version>&<platform>&<arch>")]
+async fn serve_install(mut version: String, arch: String, mut platform: String, #[allow(unused)] rate_limit: RateLimit) -> Vec<u8> {
+    let supported_types = [".deb", ".msi"];
+    if platform.starts_with(".") {
+        platform = platform[1..].to_string();
+    }
+    if version.starts_with("v") {
+        version = version[1..].to_string();
+    }
+
+    if !supported_types.contains(&platform.as_str()) {
+        panic!("Error, unsupported type.");
+    }
+
+    let file_name = format!("tynkerbase-client_{}_{}.{}", version, arch, platform);
+
+    fs::read(format!("../binaries/{}", file_name)).unwrap()
+}
+
 #[get("/")]
 fn index(#[allow(unused)] rate_limit: RateLimit) -> &'static str {
     "root"
@@ -436,6 +457,7 @@ async fn main(#[Secrets] secret_store: SecretStore) -> shuttle_rocket::ShuttleRo
                 check_node_exists_id,
             ],
         )
+        .mount("/install", routes![serve_install])
         .manage(client)
         .manage(bigdata_api);
 
