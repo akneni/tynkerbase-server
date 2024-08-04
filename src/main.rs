@@ -422,7 +422,7 @@ async fn serve_install(
     }
 
     let file_name = format!("tynkerbase-client_{}_{}.{}", version, arch, platform);
-    let bin = fs::read(format!("../binaries/{}", file_name));
+    let bin = fs::read(format!("binaries/{}", file_name));
     match bin {
         Ok(bin) => status::Custom(Status::Ok, bin),
         Err(e) => status::Custom(Status::InternalServerError, format!("Failed to read file: {}", e).as_bytes().to_vec())
