@@ -403,7 +403,12 @@ async fn get_all_addresses(
 }
 
 #[get("/?<version>&<platform>&<arch>")]
-async fn serve_install(mut version: String, arch: String, mut platform: String, #[allow(unused)] rate_limit: RateLimit) -> Vec<u8> {
+async fn serve_install(
+    mut version: String, 
+    arch: String, 
+    mut platform: String, 
+    #[allow(unused)] rate_limit: RateLimit
+) -> status::Custom<Vec<u8>>{
     let supported_types = [".deb", ".msi"];
     if platform.starts_with(".") {
         platform = platform[1..].to_string();
@@ -413,12 +418,15 @@ async fn serve_install(mut version: String, arch: String, mut platform: String, 
     }
 
     if !supported_types.contains(&platform.as_str()) {
-        panic!("Error, unsupported type.");
+        return status::Custom(Status::BadRequest, "platform not supported".as_bytes().to_vec());
     }
 
     let file_name = format!("tynkerbase-client_{}_{}.{}", version, arch, platform);
-
-    fs::read(format!("../binaries/{}", file_name)).unwrap()
+    let bin = fs::read(format!("../binaries/{}", file_name));
+    match bin {
+        Ok(bin) => status::Custom(Status::Ok, bin),
+        Err(e) => status::Custom(Status::InternalServerError, format!("Failed to read file: {}", e).as_bytes().to_vec())
+    }
 }
 
 #[get("/")]
