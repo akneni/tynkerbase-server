@@ -18,6 +18,8 @@ use futures::StreamExt;
 use rocket::{
     get, http::Status, outcome::Outcome, post, request::{self, FromRequest, Request}, response::status::{self, Custom}, routes, State
 };
+use rocket::fairing::AdHoc;
+use rocket_cors::{AllowedOrigins, CorsOptions};
 use schemas::{Node, UserAuthData};
 use shuttle_runtime::{SecretStore, Secrets};
 
@@ -451,6 +453,13 @@ async fn main(#[Secrets] secret_store: SecretStore) -> shuttle_rocket::ShuttleRo
         .expect("Secret `BIGDATA_API_KEY` does not exist.");
 
     let rocket = rocket::build()
+        .attach(AdHoc::on_ignite("CORS", |rocket| async {
+            let cors = CorsOptions::default()
+                .allowed_origins(AllowedOrigins::all())
+                .to_cors()
+                .expect("error creating CORS fairing");
+            rocket.attach(cors)
+        }))
         .mount("/", routes![index])
         .mount("/auth", routes![login, create_account, delete_account])
         .mount(
