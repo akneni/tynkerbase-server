@@ -409,7 +409,7 @@ async fn serve_install(
     mut platform: String, 
     #[allow(unused)] rate_limit: RateLimit
 ) -> status::Custom<Vec<u8>>{
-    let supported_types = [".deb", ".msi"];
+    let supported_types = ["deb", "msi"];
     if platform.starts_with(".") {
         platform = platform[1..].to_string();
     }
